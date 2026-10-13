@@ -13,3 +13,4 @@ build/
 .env
 .dev-keys/
 .DS_Store
+.claude/
