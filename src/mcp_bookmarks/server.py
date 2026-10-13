@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from . import __version__
+from .annotations import ADDS, CHANGES, READS
 from .ids import is_bookmark_id
 from .models import Bookmark, BookmarkPage, Deleted
 from .store import MAX_LIMIT, UNSET, Store
@@ -77,7 +78,7 @@ def _require_url(url: str) -> str:
     return cleaned
 
 
-@mcp.tool
+@mcp.tool(annotations=ADDS)
 def add_bookmark(
     url: Annotated[str, Field(description="Full http:// or https:// address to save.")],
     title: Annotated[
@@ -100,7 +101,7 @@ def add_bookmark(
     return get_store().add(_require_url(url), _title(title), tags)
 
 
-@mcp.tool
+@mcp.tool(annotations=READS)
 def get_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
 ) -> Bookmark:
@@ -112,7 +113,7 @@ def get_bookmark(
     return _require(bookmark_id)
 
 
-@mcp.tool
+@mcp.tool(annotations=READS)
 def list_bookmarks(
     tag: Annotated[
         str | None, Field(description="Only bookmarks carrying this tag. Omit for all.")
@@ -132,7 +133,7 @@ def list_bookmarks(
     return BookmarkPage(items=items, has_more=has_more)
 
 
-@mcp.tool
+@mcp.tool(annotations=CHANGES)
 def update_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
     title: Annotated[
@@ -161,7 +162,7 @@ def update_bookmark(
     return updated
 
 
-@mcp.tool
+@mcp.tool(annotations=CHANGES)
 def archive_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
 ) -> Bookmark:
@@ -176,7 +177,7 @@ def archive_bookmark(
     return archived
 
 
-@mcp.tool
+@mcp.tool(annotations=CHANGES)
 def delete_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
 ) -> Deleted:
