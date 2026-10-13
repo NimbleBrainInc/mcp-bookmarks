@@ -21,9 +21,10 @@ from . import __version__
 from .annotations import ADDS, CHANGES, READS
 from .auth import build_auth, current_owner
 from .config import MCP_PATH, Settings
-from .errors import ERROR_SCHEMA, not_a_handle, not_a_web_url, not_found
+from .errors import ERROR_SCHEMA, not_a_cursor, not_a_handle, not_a_web_url, not_found
 from .ids import is_bookmark_id
 from .models import Bookmark, BookmarkPage, Deleted
+from .paging import InvalidCursor
 from .store import MAX_LIMIT, UNSET, Store
 
 logging.basicConfig(
@@ -144,17 +145,46 @@ def create_server(settings: Settings) -> FastMCP:
             bool, Field(description="Also return bookmarks that were archived.")
         ] = False,
         limit: Annotated[int, Field(ge=1, le=MAX_LIMIT, description="Page size, 1 to 100.")] = 20,
+        cursor: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Position from a previous page's next_cursor. Omit for the first page. "
+                    "Pass the same tag and include_archived as that page."
+                )
+            ),
+        ] = None,
     ) -> BookmarkPage | ToolResult:
-        """List saved bookmarks, newest first.
+        """List saved bookmarks, newest first, one page at a time.
 
         Call this to show the user what is saved, to find a bookmark by tag, or to check
         whether a URL is already saved before calling add_bookmark. Each item carries its
-        bookmark_id. When has_more is true, narrow by tag or raise limit, up to 100.
+        bookmark_id. When next_cursor is set, call again with cursor=next_cursor and the
+        same filters to get the next page; it is null on the last page.
         """
-        items, has_more = store().list_page(
-            current_owner(), tag=tag, include_archived=include_archived, limit=limit
-        )
-        return BookmarkPage(items=items, has_more=has_more)
+        try:
+            items, next_cursor = store().list_page(
+                current_owner(),
+                tag=tag,
+                include_archived=include_archived,
+                limit=limit,
+                cursor=cursor,
+            )
+        except InvalidCursor:
+            return not_a_cursor(cursor or "")
+        if next_cursor is not None:
+            next_step = (
+                "More bookmarks match. Call list_bookmarks again with cursor set to "
+                "next_cursor and the same tag and include_archived."
+            )
+        elif cursor is not None:
+            next_step = (
+                "This is the last page. Bookmarks saved since the first page sort before it; "
+                "call list_bookmarks again without cursor to see them."
+            )
+        else:
+            next_step = "This is the whole list."
+        return BookmarkPage(items=items, next_cursor=next_cursor, next_step=next_step)
 
     @mcp.tool(annotations=CHANGES, output_schema=schema(Bookmark))
     def update_bookmark(

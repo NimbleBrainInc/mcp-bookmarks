@@ -15,6 +15,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from typing import Final
 
+from . import paging
 from .ids import new_bookmark_id
 from .models import Bookmark
 
@@ -132,9 +133,22 @@ class Store:
         return _row_to_bookmark(row) if row else None
 
     def list_page(
-        self, owner: str, *, tag: str | None, include_archived: bool, limit: int
-    ) -> tuple[list[Bookmark], bool]:
-        """Newest first. Fetches one row past the page to learn whether more exist."""
+        self,
+        owner: str,
+        *,
+        tag: str | None,
+        include_archived: bool,
+        limit: int,
+        cursor: str | None = None,
+    ) -> tuple[list[Bookmark], str | None]:
+        """One page, newest first, and the cursor for the next one or None on the last.
+
+        The order, the strictly-after predicate, and the cursor's contents are one fact,
+        and they live here: a caller passes a cursor through and never knows its shape.
+        Fetches one row past the page to learn whether a next page exists; the cursor
+        encodes the last row kept. Raises `paging.InvalidCursor` for a cursor that is not
+        a position in this listing.
+        """
         clauses = ["owner = ?"]
         params: list[object] = [owner]
         if not include_archived:
@@ -142,6 +156,10 @@ class Store:
         if tag is not None:
             clauses.append("EXISTS (SELECT 1 FROM json_each(bookmarks.tags) WHERE value = ?)")
             params.append(tag.strip().lower())
+        if cursor is not None:
+            created_at, bookmark_id = paging.decode(cursor)
+            clauses.append("(created_at, bookmark_id) < (?, ?)")
+            params.extend([created_at, bookmark_id])
         where = f"WHERE {' AND '.join(clauses)}"
         params.append(limit + 1)
         with closing(self._connect()) as conn:
@@ -150,8 +168,13 @@ class Store:
                 "ORDER BY created_at DESC, bookmark_id DESC LIMIT ?",
                 params,
             ).fetchall()
-        has_more = len(rows) > limit
-        return [_row_to_bookmark(row) for row in rows[:limit]], has_more
+        page = rows[:limit]
+        next_cursor = (
+            paging.encode(page[-1]["created_at"], page[-1]["bookmark_id"])
+            if len(rows) > limit
+            else None
+        )
+        return [_row_to_bookmark(row) for row in page], next_cursor
 
     def update(
         self,

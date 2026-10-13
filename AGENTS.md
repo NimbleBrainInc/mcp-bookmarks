@@ -48,3 +48,9 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
    crosses a handle between them. Nothing may depend on which era a caller speaks, and no
    test may pin `mode="legacy"` to make itself pass. A break that shows on one era only is a
    bug on that era, not a reason to narrow the suite.
+6. **A list pages by key.** A list tool that can return more than one page takes `cursor`
+   and returns `next_cursor` (null on the last page) and a `next_step` that says to call
+   again with it and the same filters. The store owns the order, the strictly-after
+   predicate, and the cursor's contents (`paging.py`); a tool passes the cursor through. A
+   cursor that does not decode, or comes from another listing, is `bad_input` with "call
+   again without cursor". Never `OFFSET`: a row removed between pages shifts every later one.

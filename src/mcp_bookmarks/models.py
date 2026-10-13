@@ -25,7 +25,13 @@ class BookmarkPage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[Bookmark] = Field(description="Bookmarks, newest first.")
-    has_more: bool = Field(description="True when more bookmarks match than this page holds.")
+    next_cursor: str | None = Field(
+        description=(
+            "Position of the next page, to pass back as cursor with the same filters. "
+            "Null on the last page."
+        )
+    )
+    next_step: str = Field(description="What to do to see more, in words.")
 
 
 class Deleted(BaseModel):

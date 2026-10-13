@@ -64,7 +64,7 @@ async def test_list_newest_first_with_tag_filter(client):
         second["bookmark_id"],
         first["bookmark_id"],
     ]
-    assert page["has_more"] is False
+    assert page["next_cursor"] is None
 
     page = (await client.call_tool("list_bookmarks", {"tag": "A"})).structured_content
     assert [b["bookmark_id"] for b in page["items"]] == [third["bookmark_id"], first["bookmark_id"]]
@@ -75,7 +75,8 @@ async def test_list_reports_more(client):
         await add(client, url=f"https://example.com/{i}")
     page = (await client.call_tool("list_bookmarks", {"limit": 2})).structured_content
     assert len(page["items"]) == 2
-    assert page["has_more"] is True
+    assert page["next_cursor"] is not None
+    assert "cursor" in page["next_step"]
 
 
 async def test_list_rejects_a_limit_out_of_range(client):

@@ -82,3 +82,12 @@ def not_a_web_url(value: str) -> ToolResult:
         f"{value!r} is not a web URL.",
         "Give a full http:// or https:// address.",
     )
+
+
+def not_a_cursor(value: str) -> ToolResult:
+    return refuse(
+        BAD_INPUT,
+        f"{value!r} is not a cursor from list_bookmarks.",
+        "Call list_bookmarks again without cursor to start from the first page, and pass only "
+        "the next_cursor it returns.",
+    )
