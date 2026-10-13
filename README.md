@@ -123,9 +123,10 @@ Each row is one merged pull request. Read them in order.
 | 3 | A tool's own failure is a result with `isError: true` and a structured body, not a protocol error. It is returned, not raised (`ToolError` drops `structuredContent`), and the declared `outputSchema` admits the error shape, because the spec binds error results to it and the Inspector checks. | [#3](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/3) |
 | 4 | The server publishes its protected-resource metadata, accepts only tokens whose `aud` is its own URL, and answers another owner's handle exactly like an unknown one. | [#4](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/4) |
 | 5 | Every test runs on both protocol eras, 2026-07-28 and the 2025 handshake, so a behaviour that differs between them fails in CI instead of in a client you do not run. | [#5](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/5) |
+| 6 | A list pages by key, never by offset: `list_bookmarks` takes `cursor` and returns `next_cursor`, an opaque position that survives rows coming and going and grants nothing on its own. | [#6](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/6) |
 
-The tutorial that walks through building this from an empty directory is on the
-[NimbleBrain blog](https://nimblebrain.ai/blog/).
+The tutorial that walks through building this from an empty directory, then through each
+lesson, is [Build Your First Remote MCP Server on the 2026-07-28 Spec](https://nimblebrain.ai/blog/build-your-first-remote-mcp-server/).
 
 ## Layout
 
@@ -135,6 +136,7 @@ src/mcp_bookmarks/
   store.py        SQLite: every durable fact lives here, never in the process
   models.py       wire shapes; each tool's output schema is built from them
   ids.py          handles: bm_ + 128 random bits
+  paging.py       cursors: the other handle, a position in one total order
   annotations.py  READS, ADDS, CHANGES: what a tool says it does to the world
   errors.py       refusals: isError results with a code, a message, and a next step
   config.py       settings from the environment; the server's URL is configuration
@@ -148,6 +150,7 @@ tests/
   test_errors.py      refusals are results; why they are returned, not raised
   test_auth.py        metadata, 401 challenge, audience binding, no existence oracle, on both eras
   test_eras.py        the two eras advertise one surface; a handle crosses between them
+  test_pagination.py  a walk covers everything once while rows come and go; bad cursors refused
 scripts/
   dev_token.py        a stand-in authorization server for your laptop
 ```
