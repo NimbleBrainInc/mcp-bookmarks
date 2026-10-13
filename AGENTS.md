@@ -26,3 +26,12 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
    missing hint is the most dangerous claim a tool can make, not a blank. A host reads a hint
    to be more careful, never to relax a check; the hints are what the server says about
    itself.
+3. **A refusal is a result, returned.** `return not_found(...)` / `refuse(code, message,
+   next_step)` from `errors.py`: `isError: true`, the envelope in `structuredContent` and as
+   the text block. Never `raise ToolError` for a refusal (it drops `structuredContent`), and
+   never a JSON-RPC error (that channel is for a request the server could not take). A tool
+   whose return type is `Model | ToolResult` declares `output_schema=schema(Model)`, or the
+   derived schema disappears; `schema()` is the union of the model and `ERROR_SCHEMA`,
+   because the spec holds every `structuredContent` to the declared schema, error results
+   included, and the Inspector enforces it (the SDK clients skip validation on `isError`).
+   `mask_error_details=True` stays on.

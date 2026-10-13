@@ -13,13 +13,14 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
-from pydantic import Field
+from fastmcp.tools import ToolResult
+from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from . import __version__
 from .annotations import ADDS, CHANGES, READS
+from .errors import ERROR_SCHEMA, not_a_handle, not_a_web_url, not_found
 from .ids import is_bookmark_id
 from .models import Bookmark, BookmarkPage, Deleted
 from .store import MAX_LIMIT, UNSET, Store
@@ -38,6 +39,9 @@ mcp = FastMCP(
         "Saves links for later. add_bookmark returns a bookmark_id; every other tool takes "
         "that handle. There is no current bookmark and no session: pass the handle each time."
     ),
+    # A refusal is returned with its envelope (errors.py). Anything that gets as far as an
+    # unexpected exception is a bug, and its text stays out of the result.
+    mask_error_details=True,
 )
 
 
@@ -51,18 +55,12 @@ def get_store() -> Store:
     return _open(os.environ.get("BOOKMARKS_DB", "bookmarks.db"))
 
 
-def _require(bookmark_id: str) -> Bookmark:
+def find(bookmark_id: str) -> Bookmark | ToolResult:
+    """The bookmark, or the refusal to return in its place."""
     if not is_bookmark_id(bookmark_id):
-        raise ToolError(
-            f"Not a bookmark_id: {bookmark_id!r}. Handles look like bm_<32 hex characters> "
-            "and come from add_bookmark or list_bookmarks."
-        )
+        return not_a_handle(bookmark_id)
     bookmark = get_store().get(bookmark_id)
-    if bookmark is None:
-        raise ToolError(
-            f"Bookmark not found: {bookmark_id}. Call list_bookmarks to see what exists."
-        )
-    return bookmark
+    return bookmark if bookmark is not None else not_found(bookmark_id)
 
 
 def _title(title: str | None) -> str | None:
@@ -71,14 +69,32 @@ def _title(title: str | None) -> str | None:
     return cleaned or None
 
 
-def _require_url(url: str) -> str:
+def web_url(url: str) -> str | ToolResult:
     cleaned = url.strip()
     if not cleaned.lower().startswith(("http://", "https://")):
-        raise ToolError(f"Not a web URL: {url!r}. Give a full http:// or https:// address.")
+        return not_a_web_url(url)
     return cleaned
 
 
-@mcp.tool(annotations=ADDS)
+def schema(model: type[BaseModel]) -> dict:
+    """The output schema of a tool that returns `model` or a refusal.
+
+    A tool whose return type is `Model | ToolResult` gets no derived output schema, so each
+    tool names its shape here. The shape is a union: a refusal's `structuredContent` is the
+    error envelope, and the spec holds every structured result to the declared schema,
+    error results included.
+    """
+    success = model.model_json_schema()
+    # A nested model lands in `$defs` and is referenced as `#/$defs/...`, a pointer from
+    # the schema's root, so the definitions have to sit at the root of the union.
+    defs = success.pop("$defs", None)
+    union: dict = {"type": "object", "oneOf": [success, ERROR_SCHEMA]}
+    if defs:
+        union["$defs"] = defs
+    return union
+
+
+@mcp.tool(annotations=ADDS, output_schema=schema(Bookmark))
 def add_bookmark(
     url: Annotated[str, Field(description="Full http:// or https:// address to save.")],
     title: Annotated[
@@ -90,7 +106,7 @@ def add_bookmark(
             description="Tags to file it under, such as ['mcp', 'reading']. Case does not matter."
         ),
     ] = None,
-) -> Bookmark:
+) -> Bookmark | ToolResult:
     """Save a link the user wants to keep, and get back the handle for it.
 
     Call this when the user shares a URL and asks to save, keep, or bookmark it. The
@@ -98,22 +114,25 @@ def add_bookmark(
     kept until delete_bookmark removes it. Saving the same URL twice makes two bookmarks;
     call list_bookmarks first if you are unsure whether the link is already saved.
     """
-    return get_store().add(_require_url(url), _title(title), tags)
+    cleaned = web_url(url)
+    if isinstance(cleaned, ToolResult):
+        return cleaned
+    return get_store().add(cleaned, _title(title), tags)
 
 
-@mcp.tool(annotations=READS)
+@mcp.tool(annotations=READS, output_schema=schema(Bookmark))
 def get_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
-) -> Bookmark:
+) -> Bookmark | ToolResult:
     """Read one bookmark by its handle.
 
     Call this when you hold a bookmark_id and need its URL, title, or tags. It does not
     search; to find a bookmark by tag, call list_bookmarks.
     """
-    return _require(bookmark_id)
+    return find(bookmark_id)
 
 
-@mcp.tool(annotations=READS)
+@mcp.tool(annotations=READS, output_schema=schema(BookmarkPage))
 def list_bookmarks(
     tag: Annotated[
         str | None, Field(description="Only bookmarks carrying this tag. Omit for all.")
@@ -133,7 +152,7 @@ def list_bookmarks(
     return BookmarkPage(items=items, has_more=has_more)
 
 
-@mcp.tool(annotations=CHANGES)
+@mcp.tool(annotations=CHANGES, output_schema=schema(Bookmark))
 def update_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
     title: Annotated[
@@ -146,13 +165,15 @@ def update_bookmark(
         list[str] | None,
         Field(description="Replacement tag list. Omit to keep the current tags."),
     ] = None,
-) -> Bookmark:
+) -> Bookmark | ToolResult:
     """Change a bookmark's title or tags.
 
     Call this when the user wants to rename a bookmark or retag it. Only the fields you
     pass change. To file a bookmark away instead, call archive_bookmark.
     """
-    _require(bookmark_id)
+    found = find(bookmark_id)
+    if isinstance(found, ToolResult):
+        return found
     updated = get_store().update(
         bookmark_id,
         title=UNSET if title is None else _title(title),
@@ -162,31 +183,35 @@ def update_bookmark(
     return updated
 
 
-@mcp.tool(annotations=CHANGES)
+@mcp.tool(annotations=CHANGES, output_schema=schema(Bookmark))
 def archive_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
-) -> Bookmark:
+) -> Bookmark | ToolResult:
     """Archive a bookmark so list_bookmarks stops showing it by default.
 
     Call this when the user is done with a link but may want it back. Archiving twice is
     harmless. To remove a bookmark for good, call delete_bookmark.
     """
-    _require(bookmark_id)
+    found = find(bookmark_id)
+    if isinstance(found, ToolResult):
+        return found
     archived = get_store().archive(bookmark_id)
     assert archived is not None
     return archived
 
 
-@mcp.tool(annotations=CHANGES)
+@mcp.tool(annotations=CHANGES, output_schema=schema(Deleted))
 def delete_bookmark(
     bookmark_id: Annotated[str, Field(description="Handle from add_bookmark or list_bookmarks.")],
-) -> Deleted:
+) -> Deleted | ToolResult:
     """Delete a bookmark permanently.
 
     Call this only when the user asks to delete or remove a bookmark. There is no undo;
     when the user may want it back, call archive_bookmark instead.
     """
-    _require(bookmark_id)
+    found = find(bookmark_id)
+    if isinstance(found, ToolResult):
+        return found
     get_store().delete(bookmark_id)
     return Deleted(bookmark_id=bookmark_id, deleted=True)
 

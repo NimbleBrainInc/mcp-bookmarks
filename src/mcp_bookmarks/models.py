@@ -1,4 +1,5 @@
-"""Wire shapes. Every tool returns one of these, and FastMCP derives the output schema."""
+"""Wire shapes. Every tool returns one of these, and its output schema is built from it
+(`server.schema()`, which also admits the error envelope)."""
 
 from pydantic import BaseModel, ConfigDict, Field
 
