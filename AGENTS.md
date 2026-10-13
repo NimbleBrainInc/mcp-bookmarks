@@ -20,3 +20,9 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
    state a client needs back goes in a result as a handle the client passes to the next
    call. No `ctx.set_state`, no module-level dicts keyed by caller, no `Mcp-Session-Id`.
    `stateless_http=True` stays on so the 2025-era handshake mints no session either.
+2. **Every tool is annotated.** `@mcp.tool(annotations=...)` with one of `READS`, `ADDS`, or
+   `CHANGES` from `annotations.py`, and the tool's row in `tests/test_annotations.py::EXPECTED`. The spec's
+   defaults make an unannotated tool a destructive, non-idempotent, open-world write, so a
+   missing hint is the most dangerous claim a tool can make, not a blank. A host reads a hint
+   to be more careful, never to relax a check; the hints are what the server says about
+   itself.
