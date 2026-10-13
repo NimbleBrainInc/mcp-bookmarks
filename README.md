@@ -102,6 +102,7 @@ src/mcp_bookmarks/
 tests/
   test_tools.py       each tool, through fastmcp.Client
   test_stateless.py   handles cross connections; no era gets a session
+  test_health.py      /health answers for the store, not the process
 ```
 
 ## License
