@@ -1,10 +1,12 @@
 """Shared fixtures.
 
 Tools are exercised through `fastmcp.Client`, never by calling the Python functions, so
-every test sees what a client sees on the wire. `live_server` runs the real ASGI app under
+every test sees what a client sees on the wire. Each test gets its own server, built from
+its own settings over a fresh database; `live_server` runs that server's ASGI app under
 uvicorn for the tests that need HTTP itself.
 """
 
+import os
 import socket
 import threading
 import time
@@ -13,22 +15,29 @@ from collections.abc import Iterator
 import httpx
 import pytest
 import uvicorn
-from fastmcp import Client
+from fastmcp import Client, FastMCP
 
-from mcp_bookmarks import server
+# The module builds a server from the environment when imported.
+os.environ.setdefault("BOOKMARKS_ALLOW_ANONYMOUS", "true")
 
-
-@pytest.fixture(autouse=True)
-def db_path(tmp_path, monkeypatch) -> str:
-    """A fresh database per test. The store is opened by path, so no cache to clear."""
-    path = str(tmp_path / "bookmarks.db")
-    monkeypatch.setenv("BOOKMARKS_DB", path)
-    return path
+from mcp_bookmarks.config import Settings  # noqa: E402
+from mcp_bookmarks.server import create_app, create_server  # noqa: E402
 
 
 @pytest.fixture
-def mcp():
-    return server.mcp
+def db_path(tmp_path) -> str:
+    return str(tmp_path / "bookmarks.db")
+
+
+@pytest.fixture
+def settings(db_path) -> Settings:
+    """Anonymous, as the server runs in local development."""
+    return Settings(db_path=db_path, allow_anonymous=True)
+
+
+@pytest.fixture
+def mcp(settings) -> FastMCP:
+    return create_server(settings)
 
 
 @pytest.fixture
@@ -44,18 +53,19 @@ def _free_port() -> int:
 
 
 @pytest.fixture
-def live_server(db_path) -> Iterator[str]:
-    """The ASGI app under uvicorn, on a free port. Yields the MCP endpoint URL."""
+def live_server(mcp) -> Iterator[str]:
+    """This test's server under uvicorn, on a free port. Yields the MCP endpoint URL."""
     port = _free_port()
-    config = uvicorn.Config(server.app, host="127.0.0.1", port=port, log_level="warning")
+    config = uvicorn.Config(create_app(mcp), host="127.0.0.1", port=port, log_level="warning")
     uvi = uvicorn.Server(config)
     thread = threading.Thread(target=uvi.run, daemon=True)
     thread.start()
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         try:
-            if httpx.get(f"http://127.0.0.1:{port}/health", timeout=0.5).status_code == 200:
-                break
+            # Any answer means the app is up; /health may say 503 on purpose in a test.
+            httpx.get(f"http://127.0.0.1:{port}/health", timeout=0.5)
+            break
         except httpx.HTTPError:
             time.sleep(0.05)
     else:

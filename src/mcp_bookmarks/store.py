@@ -2,6 +2,11 @@
 
 Every durable fact lives here, never in the process. A tool opens a connection, does one
 thing, and closes it, so any process with the same database file answers any request.
+
+Every row carries its owner, and every read and write names the owner it acts for. A
+handle alone is a name, not a capability: `get(owner, bookmark_id)` finds nothing when the
+bookmark belongs to someone else, which is the same nothing it finds for a handle that was
+never minted.
 """
 
 import json
@@ -13,18 +18,22 @@ from typing import Final
 from .ids import new_bookmark_id
 from .models import Bookmark
 
-SCHEMA: Final = """
+TABLE: Final = """
 CREATE TABLE IF NOT EXISTS bookmarks (
     bookmark_id TEXT PRIMARY KEY,
+    owner       TEXT NOT NULL,
     url         TEXT NOT NULL,
     title       TEXT,
     tags        TEXT NOT NULL,
     archived    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS bookmarks_newest_first
-    ON bookmarks (created_at DESC, bookmark_id DESC);
+)
+"""
+
+INDEX: Final = """
+CREATE INDEX IF NOT EXISTS bookmarks_owner_newest_first
+    ON bookmarks (owner, created_at DESC, bookmark_id DESC)
 """
 
 MAX_LIMIT: Final = 100
@@ -67,7 +76,18 @@ class Store:
     def __init__(self, path: str) -> None:
         self.path = path
         with closing(self._connect()) as conn:
-            conn.executescript(SCHEMA)
+            conn.execute(TABLE)
+            self._migrate(conn)
+            conn.execute(INDEX)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """A database from before owners gets the column, and every existing row is
+        `anonymous`. Runs before the index is created, since the index names the column."""
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(bookmarks)")}
+        if "owner" not in columns:
+            conn.execute("ALTER TABLE bookmarks ADD COLUMN owner TEXT NOT NULL DEFAULT 'anonymous'")
+            conn.execute("DROP INDEX IF EXISTS bookmarks_newest_first")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, isolation_level=None)
@@ -76,7 +96,7 @@ class Store:
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
-    def add(self, url: str, title: str | None, tags: list[str] | None) -> Bookmark:
+    def add(self, owner: str, url: str, title: str | None, tags: list[str] | None) -> Bookmark:
         now = _now()
         bookmark = Bookmark(
             bookmark_id=new_bookmark_id(),
@@ -89,9 +109,10 @@ class Store:
         )
         with closing(self._connect()) as conn:
             conn.execute(
-                "INSERT INTO bookmarks VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO bookmarks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     bookmark.bookmark_id,
+                    owner,
                     bookmark.url,
                     bookmark.title,
                     json.dumps(bookmark.tags),
@@ -102,25 +123,26 @@ class Store:
             )
         return bookmark
 
-    def get(self, bookmark_id: str) -> Bookmark | None:
+    def get(self, owner: str, bookmark_id: str) -> Bookmark | None:
         with closing(self._connect()) as conn:
             row = conn.execute(
-                "SELECT * FROM bookmarks WHERE bookmark_id = ?", (bookmark_id,)
+                "SELECT * FROM bookmarks WHERE owner = ? AND bookmark_id = ?",
+                (owner, bookmark_id),
             ).fetchone()
         return _row_to_bookmark(row) if row else None
 
     def list_page(
-        self, *, tag: str | None, include_archived: bool, limit: int
+        self, owner: str, *, tag: str | None, include_archived: bool, limit: int
     ) -> tuple[list[Bookmark], bool]:
         """Newest first. Fetches one row past the page to learn whether more exist."""
-        clauses = []
-        params: list[object] = []
+        clauses = ["owner = ?"]
+        params: list[object] = [owner]
         if not include_archived:
             clauses.append("archived = 0")
         if tag is not None:
             clauses.append("EXISTS (SELECT 1 FROM json_each(bookmarks.tags) WHERE value = ?)")
             params.append(tag.strip().lower())
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = f"WHERE {' AND '.join(clauses)}"
         params.append(limit + 1)
         with closing(self._connect()) as conn:
             rows = conn.execute(
@@ -133,6 +155,7 @@ class Store:
 
     def update(
         self,
+        owner: str,
         bookmark_id: str,
         *,
         title: str | None | _Unset = UNSET,
@@ -147,23 +170,28 @@ class Store:
             sets.append("tags = ?")
             params.append(json.dumps(normalize_tags(tags)))
         if not sets:
-            return self.get(bookmark_id)
+            return self.get(owner, bookmark_id)
         sets.append("updated_at = ?")
-        params.extend([_now(), bookmark_id])
+        params.extend([_now(), owner, bookmark_id])
         with closing(self._connect()) as conn:
-            conn.execute(f"UPDATE bookmarks SET {', '.join(sets)} WHERE bookmark_id = ?", params)
-        return self.get(bookmark_id)
+            conn.execute(
+                f"UPDATE bookmarks SET {', '.join(sets)} WHERE owner = ? AND bookmark_id = ?",
+                params,
+            )
+        return self.get(owner, bookmark_id)
 
-    def archive(self, bookmark_id: str) -> Bookmark | None:
+    def archive(self, owner: str, bookmark_id: str) -> Bookmark | None:
         with closing(self._connect()) as conn:
             conn.execute(
                 "UPDATE bookmarks SET archived = 1, updated_at = ? "
-                "WHERE bookmark_id = ? AND archived = 0",
-                (_now(), bookmark_id),
+                "WHERE owner = ? AND bookmark_id = ? AND archived = 0",
+                (_now(), owner, bookmark_id),
             )
-        return self.get(bookmark_id)
+        return self.get(owner, bookmark_id)
 
-    def delete(self, bookmark_id: str) -> bool:
+    def delete(self, owner: str, bookmark_id: str) -> bool:
         with closing(self._connect()) as conn:
-            cursor = conn.execute("DELETE FROM bookmarks WHERE bookmark_id = ?", (bookmark_id,))
+            cursor = conn.execute(
+                "DELETE FROM bookmarks WHERE owner = ? AND bookmark_id = ?", (owner, bookmark_id)
+            )
             return cursor.rowcount == 1
