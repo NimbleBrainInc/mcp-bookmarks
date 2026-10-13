@@ -7,6 +7,11 @@ primary_region = "sjc"
 
 [env]
   BOOKMARKS_DB = "/data/bookmarks.db"
+  # Tokens are bound to this URL. Set it to where clients will reach the server.
+  BOOKMARKS_PUBLIC_URL = "https://mcp-bookmarks.fly.dev"
+  # Your authorization server, as it prints its `iss` claim, and where it publishes keys.
+  BOOKMARKS_ISSUER = "https://your-idp.example.com/"
+  BOOKMARKS_JWKS_URI = "https://your-idp.example.com/.well-known/jwks.json"
 
 [http_service]
   internal_port = 8000

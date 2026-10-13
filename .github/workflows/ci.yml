@@ -27,7 +27,9 @@ jobs:
       - run: docker build -t mcp-bookmarks .
       - name: Serve from the image and call /health
         run: |
-          docker run -d --rm --name bookmarks -p 8000:8000 mcp-bookmarks
+          # The image refuses to start without authentication settings; CI only checks
+          # that it serves, so it runs the anonymous development mode.
+          docker run -d --rm --name bookmarks -p 8000:8000 -e BOOKMARKS_ALLOW_ANONYMOUS=true mcp-bookmarks
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/health && break
             sleep 1

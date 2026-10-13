@@ -20,8 +20,8 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
    state a client needs back goes in a result as a handle the client passes to the next
    call. No `ctx.set_state`, no module-level dicts keyed by caller, no `Mcp-Session-Id`.
    `stateless_http=True` stays on so the 2025-era handshake mints no session either.
-2. **Every tool is annotated.** `@mcp.tool(annotations=...)` with one of `READS`, `ADDS`, or
-   `CHANGES` from `annotations.py`, and the tool's row in `tests/test_annotations.py::EXPECTED`. The spec's
+2. **Every tool is annotated.** `@mcp.tool(annotations=READS | ADDS | CHANGES)` from
+   `annotations.py`, and the tool's row in `tests/test_annotations.py::EXPECTED`. The spec's
    defaults make an unannotated tool a destructive, non-idempotent, open-world write, so a
    missing hint is the most dangerous claim a tool can make, not a blank. A host reads a hint
    to be more careful, never to relax a check; the hints are what the server says about
@@ -35,3 +35,11 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
    because the spec holds every `structuredContent` to the declared schema, error results
    included, and the Inspector enforces it (the SDK clients skip validation on `isError`).
    `mask_error_details=True` stays on.
+4. **Tokens are bound to this server's URL; a handle is a name.** `JWTVerifier(audience=
+   settings.resource_url)` where `resource_url` is `BOOKMARKS_PUBLIC_URL + /mcp`, built from
+   configuration and never from a request header. `RemoteAuthProvider` publishes the
+   protected-resource metadata and the 401 challenge. The owner is the token's `sub`, and a
+   token without one is refused at the door (`SubjectRequired`). The store takes `owner` on every
+   read and write, and `find()` answers another owner's handle exactly as it answers an
+   unknown one: there is no existence oracle. Token failures stay 401; the shared refusal
+   is only for a caller the server already knows. Never add an `owner` argument to a tool.
