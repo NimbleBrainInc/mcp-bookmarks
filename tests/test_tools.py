@@ -12,7 +12,7 @@ async def add(client, url=URL, **kwargs):
 
 
 async def test_add_returns_a_handle(client):
-    bookmark = await add(client, title="Changelog", tags=["MCP", "mcp", " Spec "])
+    bookmark = await add(client, title=" Changelog ", tags=["MCP", "mcp", " Spec "])
     assert bookmark["bookmark_id"].startswith("bm_")
     assert bookmark["url"] == URL
     assert bookmark["title"] == "Changelog"
@@ -92,7 +92,7 @@ async def test_update_changes_only_what_is_passed(client):
     cleared = (
         await client.call_tool("update_bookmark", {"bookmark_id": handle, "title": ""})
     ).structured_content
-    assert cleared["title"] == ""
+    assert cleared["title"] is None
 
 
 async def test_archive_hides_from_the_default_list_and_is_idempotent(client):

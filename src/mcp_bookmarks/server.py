@@ -64,6 +64,12 @@ def _require(bookmark_id: str) -> Bookmark:
     return bookmark
 
 
+def _title(title: str | None) -> str | None:
+    """A blank title is no title."""
+    cleaned = (title or "").strip()
+    return cleaned or None
+
+
 def _require_url(url: str) -> str:
     cleaned = url.strip()
     if not cleaned.lower().startswith(("http://", "https://")):
@@ -87,11 +93,11 @@ def add_bookmark(
     """Save a link the user wants to keep, and get back the handle for it.
 
     Call this when the user shares a URL and asks to save, keep, or bookmark it. The
-    result's bookmark_id is the handle every other tool takes, so keep it. Saving the
-    same URL twice makes two bookmarks; call list_bookmarks first if you are unsure
-    whether the link is already saved.
+    result's bookmark_id is the handle every other tool takes, so keep it. A bookmark is
+    kept until delete_bookmark removes it. Saving the same URL twice makes two bookmarks;
+    call list_bookmarks first if you are unsure whether the link is already saved.
     """
-    return get_store().add(_require_url(url), title, tags)
+    return get_store().add(_require_url(url), _title(title), tags)
 
 
 @mcp.tool
@@ -148,7 +154,7 @@ def update_bookmark(
     _require(bookmark_id)
     updated = get_store().update(
         bookmark_id,
-        title=UNSET if title is None else title,
+        title=UNSET if title is None else _title(title),
         tags=UNSET if tags is None else tags,
     )
     assert updated is not None
@@ -186,7 +192,15 @@ def delete_bookmark(
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "service": "mcp-bookmarks", "version": __version__})
+    """Healthy means the one dependency answers: a probe that never touches the store would
+    pass on a machine that fails every tool call."""
+    body = {"service": "mcp-bookmarks", "version": __version__}
+    try:
+        get_store()
+    except Exception as exc:
+        logger.error("store unavailable: %r", exc)
+        return JSONResponse({"status": "unavailable", **body}, status_code=503)
+    return JSONResponse({"status": "ok", **body})
 
 
 # The ASGI app a container runs: `uvicorn mcp_bookmarks.server:app`.

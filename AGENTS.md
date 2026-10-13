@@ -8,7 +8,7 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
 
 - `make check` is CI: `ruff format --check`, `ruff check`, `ty check`, `pytest`. Run it
   before pushing.
-- Python 3.13+, `uv` for everything (`uv sync`, `uv run`, `uv add`). `fastmcp>=4,<5` on
+- Python 3.13+, `uv` for everything (`uv sync`, `uv run`, `uv add`). `fastmcp>=4.1,<5` on
   `mcp>=2,<3`; SDK v2 models are snake_case in Python (`is_error`, `read_only_hint`).
 - Tests go through `fastmcp.Client`, never by calling a tool function. The in-memory client
   (`Client(mcp)`) covers tool behaviour; the `live_server` fixture runs the real ASGI app

@@ -3,9 +3,9 @@
 A handle is the only thing a client holds between calls. The protocol has no session
 to remember it in, so the client gets it back from `add_bookmark` and passes it to every
 later tool as an ordinary argument. On a server without authentication the handle is also
-the only thing standing between a stranger and the bookmark, so it carries 128 bits of
-random entropy, which is the floor the spec's stateful-tools guidance sets for a handle
-that doubles as a bearer credential.
+the only thing standing between a stranger and the bookmark. The spec's stateful-tools
+guidance asks such a handle to carry sufficient entropy and gives a UUIDv4 as its example;
+this one carries 128 random bits, a little more than that.
 """
 
 import re

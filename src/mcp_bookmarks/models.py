@@ -12,8 +12,8 @@ class Bookmark(BaseModel):
             "archive_bookmark, or delete_bookmark."
         )
     )
-    url: str = Field(description="The saved URL, exactly as given.")
-    title: str | None = Field(description="Display title, or null when none was given.")
+    url: str = Field(description="The saved URL as given, with surrounding whitespace removed.")
+    title: str | None = Field(description="Display title, or null when there is none.")
     tags: list[str] = Field(description="Lower-case tags, deduplicated, in the order given.")
     archived: bool = Field(description="True once archive_bookmark has been called on it.")
     created_at: str = Field(description="When it was saved, ISO 8601 in UTC.")
