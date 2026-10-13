@@ -40,9 +40,17 @@ def mcp(settings) -> FastMCP:
     return create_server(settings)
 
 
-@pytest.fixture
-async def client(mcp) -> Iterator[Client]:
-    async with Client(mcp) as c:
+ERAS = {"2026-07-28": "auto", "2025-11-25": "legacy"}
+"""The protocol version each client mode negotiates. Every tool test runs once per era, so
+a behaviour that differs between them fails here instead of in a client we do not run."""
+
+
+@pytest.fixture(params=list(ERAS), ids=list(ERAS))
+async def client(request, mcp) -> Iterator[Client]:
+    """One client per protocol era. `auto` is the SDK's default and lands on 2026-07-28;
+    `legacy` opens with the 2025 `initialize` handshake a client on the old era still speaks."""
+    async with Client(mcp, mode=ERAS[request.param]) as c:
+        assert c.protocol_version == request.param, "the SDK negotiated a different era"
         yield c
 
 

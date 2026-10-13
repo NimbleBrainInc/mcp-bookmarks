@@ -122,6 +122,7 @@ Each row is one merged pull request. Read them in order.
 | 2 | Every tool is annotated. Under the spec's defaults an unannotated tool is a destructive write, so a missing hint is a claim, not a blank. | [#2](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/2) |
 | 3 | A tool's own failure is a result with `isError: true` and a structured body, not a protocol error. It is returned, not raised (`ToolError` drops `structuredContent`), and the declared `outputSchema` admits the error shape, because the spec binds error results to it and the Inspector checks. | [#3](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/3) |
 | 4 | The server publishes its protected-resource metadata, accepts only tokens whose `aud` is its own URL, and answers another owner's handle exactly like an unknown one. | [#4](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/4) |
+| 5 | Every test runs on both protocol eras, 2026-07-28 and the 2025 handshake, so a behaviour that differs between them fails in CI instead of in a client you do not run. | [#5](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/5) |
 
 The tutorial that walks through building this from an empty directory is on the
 [NimbleBrain blog](https://nimblebrain.ai/blog/).
@@ -139,12 +140,14 @@ src/mcp_bookmarks/
   config.py       settings from the environment; the server's URL is configuration
   auth.py         JWT verification bound to that URL; who the current call acts as
 tests/
-  test_tools.py       each tool, through fastmcp.Client
+  test_tools.py       each tool, through fastmcp.Client, once per protocol era (so are
+                      test_annotations.py and test_errors.py: every test on the client fixture)
   test_stateless.py   handles cross connections; no era gets a session
   test_health.py      /health answers for the store, not the process
   test_annotations.py every tool is in the table, and the wire matches it
   test_errors.py      refusals are results; why they are returned, not raised
-  test_auth.py        metadata, 401 challenge, audience binding, no existence oracle
+  test_auth.py        metadata, 401 challenge, audience binding, no existence oracle, on both eras
+  test_eras.py        the two eras advertise one surface; a handle crosses between them
 scripts/
   dev_token.py        a stand-in authorization server for your laptop
 ```
