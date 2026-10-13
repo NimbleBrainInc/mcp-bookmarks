@@ -29,6 +29,7 @@ packages = ["src/mcp_bookmarks"]
 [dependency-groups]
 dev = [
     "httpx>=0.28",
+    "jsonschema>=4.23",
     "pytest>=8.4",
     "pytest-asyncio>=1.0",
     "ruff>=0.13",

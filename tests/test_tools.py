@@ -6,6 +6,13 @@ from fastmcp.exceptions import ToolError
 URL = "https://modelcontextprotocol.io/specification/2026-07-28/changelog"
 
 
+async def refusal(client, name, arguments):
+    """The error envelope of a call the tool refused."""
+    result = await client.call_tool(name, arguments, raise_on_error=False)
+    assert result.is_error is True
+    return result.structured_content["error"]
+
+
 async def add(client, url=URL, **kwargs):
     result = await client.call_tool("add_bookmark", {"url": url, **kwargs})
     return result.structured_content
@@ -22,8 +29,9 @@ async def test_add_returns_a_handle(client):
 
 
 async def test_add_refuses_a_non_web_url(client):
-    with pytest.raises(ToolError, match="Not a web URL"):
-        await add(client, url="ftp://example.com/file")
+    error = await refusal(client, "add_bookmark", {"url": "ftp://example.com/file"})
+    assert error["code"] == "bad_input"
+    assert "not a web URL" in error["message"]
 
 
 async def test_get_by_handle(client):
@@ -35,13 +43,14 @@ async def test_get_by_handle(client):
 
 
 async def test_get_unknown_handle(client):
-    with pytest.raises(ToolError, match="Bookmark not found"):
-        await client.call_tool("get_bookmark", {"bookmark_id": "bm_" + "0" * 32})
+    error = await refusal(client, "get_bookmark", {"bookmark_id": "bm_" + "0" * 32})
+    assert error["code"] == "not_found"
 
 
 async def test_get_malformed_handle(client):
-    with pytest.raises(ToolError, match="Not a bookmark_id"):
-        await client.call_tool("get_bookmark", {"bookmark_id": "42"})
+    error = await refusal(client, "get_bookmark", {"bookmark_id": "42"})
+    assert error["code"] == "bad_input"
+    assert "not a bookmark_id" in error["message"]
 
 
 async def test_list_newest_first_with_tag_filter(client):
@@ -116,7 +125,7 @@ async def test_delete_makes_the_handle_stop_resolving(client):
     handle = saved["bookmark_id"]
     gone = (await client.call_tool("delete_bookmark", {"bookmark_id": handle})).structured_content
     assert gone == {"bookmark_id": handle, "deleted": True}
-    with pytest.raises(ToolError, match="Bookmark not found"):
-        await client.call_tool("get_bookmark", {"bookmark_id": handle})
-    with pytest.raises(ToolError, match="Bookmark not found"):
-        await client.call_tool("delete_bookmark", {"bookmark_id": handle})
+    assert (await refusal(client, "get_bookmark", {"bookmark_id": handle}))["code"] == "not_found"
+    assert (await refusal(client, "delete_bookmark", {"bookmark_id": handle}))[
+        "code"
+    ] == "not_found"

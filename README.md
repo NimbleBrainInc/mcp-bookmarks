@@ -88,6 +88,7 @@ Each row is one merged pull request. Read them in order.
 |---|---|---|
 | 1 | The server holds nothing between requests. Cross-call state is an explicit handle in the arguments, never a session. | [#1](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/1) |
 | 2 | Every tool is annotated. Under the spec's defaults an unannotated tool is a destructive write, so a missing hint is a claim, not a blank. | [#2](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/2) |
+| 3 | A tool's own failure is a result with `isError: true` and a structured body, not a protocol error. It is returned, not raised (`ToolError` drops `structuredContent`), and the declared `outputSchema` admits the error shape, because the spec binds error results to it and the Inspector checks. | [#3](https://github.com/NimbleBrainInc/mcp-bookmarks/pull/3) |
 
 The tutorial that walks through building this from an empty directory is on the
 [NimbleBrain blog](https://nimblebrain.ai/blog/).
@@ -98,14 +99,16 @@ The tutorial that walks through building this from an empty directory is on the
 src/mcp_bookmarks/
   server.py       the FastMCP server: tools, health route, ASGI app
   store.py        SQLite: every durable fact lives here, never in the process
-  models.py       wire shapes; FastMCP derives each tool's output schema from them
+  models.py       wire shapes; each tool's output schema is built from them
   ids.py          handles: bm_ + 128 random bits
   annotations.py  READS, ADDS, CHANGES: what a tool says it does to the world
+  errors.py       refusals: isError results with a code, a message, and a next step
 tests/
   test_tools.py       each tool, through fastmcp.Client
   test_stateless.py   handles cross connections; no era gets a session
   test_health.py      /health answers for the store, not the process
   test_annotations.py every tool is in the table, and the wire matches it
+  test_errors.py      refusals are results; why they are returned, not raised
 ```
 
 ## License
