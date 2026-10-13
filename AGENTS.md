@@ -43,3 +43,8 @@ one lesson per PR, the rule stated in the PR body, a test that fails without it.
    read and write, and `find()` answers another owner's handle exactly as it answers an
    unknown one: there is no existence oracle. Token failures stay 401; the shared refusal
    is only for a caller the server already knows. Never add an `owner` argument to a tool.
+5. **Both eras, one surface, proven.** The `client` fixture runs every tool test on
+   2026-07-28 and on the 2025 handshake era; `test_eras.py` compares the two surfaces and
+   crosses a handle between them. Nothing may depend on which era a caller speaks, and no
+   test may pin `mode="legacy"` to make itself pass. A break that shows on one era only is a
+   bug on that era, not a reason to narrow the suite.

@@ -158,6 +158,41 @@ async def test_another_owners_handle_is_answered_like_an_unknown_one(live_server
     assert still == saved
 
 
+def test_the_2025_era_is_authenticated_too(live_server, keys):
+    """The handshake era is a second door into the same server; it gets the same lock."""
+    initialize = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "probe", "version": "0"},
+        },
+    }
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+    }
+    without = httpx.post(live_server, headers=headers, json=initialize, timeout=5)
+    assert without.status_code == 401
+    wrong = httpx.post(
+        live_server,
+        headers={**headers, "Authorization": f"Bearer {token(keys, audience=PUBLIC_URL)}"},
+        json=initialize,
+        timeout=5,
+    )
+    assert wrong.status_code == 401
+    right = httpx.post(
+        live_server,
+        headers={**headers, "Authorization": f"Bearer {token(keys)}"},
+        json=initialize,
+        timeout=5,
+    )
+    assert right.status_code == 200
+
+
 async def test_each_owner_sees_only_their_own_list(live_server, keys):
     async with Client(StreamableHttpTransport(live_server, auth=token(keys, "alice"))) as alice:
         await alice.call_tool("add_bookmark", {"url": URL + "/a"})
